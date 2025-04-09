@@ -1,8 +1,13 @@
 //All pins have PWM
 #include <Adafruit_GFX.h> //needed for display, core library for all graphics
 #include <Adafruit_PCD8544.h> //needed for display, specifically the Nokia5110 library
+#include <Wire.h> //allows I2C device communication for US Sensor
 
-// LCD Pins for Nokia5110 LCD display (these pins can change and be whatever GPIO just doing this for now)
+//Pins for Ultrasonic Sensor
+#define echoPin 1
+#define trigPin 2
+
+//LCD Pins for Nokia5110 LCD display (these pins can change and be whatever GPIO just doing this for now)
 #define LCD_CLK 8
 #define LCD_DIN 7
 #define LCD_DC 6
@@ -11,7 +16,7 @@
 
 Adafruit_PCD8544 display = Adafruit_PCD8544(LCD_CLK, LCD_DIN, LCD_DC, LCD_CE, LCD_RST); //from a tutorial just use this from library, sets up Nokia5110 LCD Display
 
-// Button pins
+//Button pins
 #define BTN_SET 9 //set button (set alarm, set time)
 #define BTN_INC 10 //increment button (hours,minutes,seconds)
 #define BTN_NEXT 11 //next time button (hour->min->sec->hour)
@@ -23,9 +28,17 @@ int sequenceCount = 0; //count to keep track of number of buttons clicked in cor
 #define LED_PIN 13 //light-emitting diode pin
 int brightness = 255; //for LEDPulse, initally LED brightness is 255 (max)
 
-//#define Piezo_PIN 14 //the piezo alarm
+#define Piezo_PIN 14 //the piezo alarm
 
-#define Motor1 3
+#define PIR_SENSOR 37 //PIR sensor pin - senses motion
+
+//Motor Pins F = Forward B = Backward; uses L9110H H-Bridge which has two motor directions, allowing it to go backwards and give enough current to motors
+#define LEFTMOTORF 3 //L9110H H-Bridge also able to be controlled by PWM, so using AnalogWrite to give it varying speed levels
+#define LEFTMOTORB 4
+#define RIGHTMOTORF 20
+#define RIGHTMOTORB 21
+bool reversing = false; //boolean variable to know when motors need to reverse
+int motorspeed = 100; //default pwm speed for motors (39.2%)
 
 int hours = 12, minutes = 0, seconds = 0; //default time before setting it manually
 int alarmHours = 12, alarmMinutes = 0, alarmSeconds = 15; //default alarm time can also set manually
@@ -39,6 +52,7 @@ unsigned long lastUpdate = 0; //variable to make time go forward one second, mil
 unsigned long LEDlastUpdate = 0; //seperate for LED
 unsigned long buttonTime = 0; //for button time between the three alarm buttons, if they take too long then theyre cooked
 unsigned long messageTime = 0; //for displaying temporary STOP button messages
+unsigned long reverseTime = 0; //for motor reverse mode to let them reverse for set amount of time
 
 String Message = ""; //global message variable to display temporarily
 bool showMessage = false; //boolean message variable to tell when to display temporary message
@@ -59,10 +73,19 @@ void setup(){
   pinMode(BTN_STP1, INPUT_PULLUP); //button stop
   pinMode(BTN_STP2, INPUT_PULLUP);
   pinMode(BTN_STP3, INPUT_PULLUP);
+
   //pinMode(Piezo_PIN, OUTPUT); //OUTPUT provides higher current, so use a 470/1k ohm resistor usually (from arduino)
   //digitalWrite(Piezo_PIN, LOW); //piezo alarm off
-  pinMode(Motor1, OUTPUT);
-}
+
+  pinMode(LEFTMOTORF, OUTPUT); //motors
+  pinMode(LEFTMOTORB, OUTPUT);
+  pinMode(RIGHTMOTORF, OUTPUT);
+  pinMode(RIGHTMOTORB, OUTPUT);
+
+  pinMode(PIR_SENSOR, INPUT); //PIR Sensor
+  pinMode(trigPin, OUTPUT); //US Sensor
+  pinMode(echoPin, INPUT); //US Sensor
+  }
 
 void loop(){
   checkButtons(); //have handlebuttons in loop so that they can be pressed anytime
@@ -78,7 +101,7 @@ void loop(){
 
   if(alarmActive){
     LEDPulse(LED_PIN); //call LEDPulse to turn on LED
-    //digitalWrite(Piezo_PIN, HIGH); //turn on Piezo alarm with pin 14 (loud af)
+    //digitalWrite(Piezo_PIN, HIGH); //turn on Piezo alarm with pin 14 (really loud)
     MotorsOn();
   }else{
     analogWrite(LED_PIN, 0); //turn off LED (0% PWM)
@@ -274,10 +297,47 @@ void LEDPulse(int led_pin){ //uses PWM to control LED brightness. 0 = 0%, 255 = 
   }
 }
 
+long SeeDistance(){ //Code from harshkzz on GitHub https://www.youtube.com/watch?v=sXNcZdf4NS0&ab_channel=INOVATRIX, standard US Sensor setup in cm
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2); //since microseconds, will slightly delay 1000ms when on, but i dont care that it will be off some microseconds
+  digitalWrite(trigPin, HIGH);//send out signal
+  delayMicroseconds(10);//takes 10us to get good reading
+  digitalWrite(trigPin, LOW);//stop sending signal
+  long duration = pulseIn(echoPin, HIGH);//read echo
+  long distance = duration / 58.2; //convert echo into cm distance
+  return distance;
+} //this will be used in MotorsOn so it will be able to detect objects in front and not run into them
+
 void MotorsOn(){
-  analogWrite(Motor1, 255);
+  if(reversing && millis() - reverseTime < 700){
+    analogWrite(LEFTMOTORF, 0);
+    analogWrite(LEFTMOTORB, 100); //39.2% pwm reverse
+    analogWrite(RIGHTMOTORF, 0);
+    analogWrite(RIGHTMOTORB, 40); //15.6% pwm reverse, slower so it turns left
+    return;//dont read rest of logic
+  }else{
+    reversing = false; //stop reversing when over time
+  }
+
+  if(SeeDistance() <= 15.00){ //if the distance of an object is less than or equal to 15cm
+    reverseTime = millis(); //start reverse time
+    reversing = true;
+    return; //stop logic to start reverse logic at top
+  }
+
+  if(digitalRead(PIR_SENSOR) == HIGH){ //if PIR sensor detects motion, up the motorspeed to go away faster
+    motorspeed = 195; //76.5% pwm
+  }
+
+  analogWrite(LEFTMOTORF, motorspeed);
+  analogWrite(LEFTMOTORB, 0);
+  analogWrite(RIGHTMOTORF, motorspeed);
+  analogWrite(RIGHTMOTORB, 0);
 }
 
-void MotorsOff(){
-  analogWrite(Motor1, 0);
+void MotorsOff(){ //turn off motors
+  analogWrite(LEFTMOTORF, 0);
+  analogWrite(LEFTMOTORB, 0);
+  analogWrite(RIGHTMOTORF, 0);
+  analogWrite(RIGHTMOTORB, 0);
 }
