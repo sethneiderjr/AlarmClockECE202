@@ -4,8 +4,8 @@
 #include <Wire.h> //allows I2C device communication for US Sensor
 
 //Pins for Ultrasonic Sensor
-#define echoPin 1
-#define trigPin 2
+#define echoPin 17
+#define trigPin 18
 
 //LCD Pins for Nokia5110 LCD display (these pins can change and be whatever GPIO just doing this for now)
 #define LCD_CLK 8
@@ -25,16 +25,16 @@ Adafruit_PCD8544 display = Adafruit_PCD8544(LCD_CLK, LCD_DIN, LCD_DC, LCD_CE, LC
 #define BTN_STP3 16 //stop alarm button 3
 int sequenceCount = 0; //count to keep track of number of buttons clicked in correct order (up to two since three buttons total, keep track of first two)
 
-#define LED_PIN 13 //light-emitting diode pin
-int brightness = 255; //for LEDPulse, initally LED brightness is 255 (max)
+#define LED_PIN1 13 //light-emitting diode pin
+#define LED_PIN2 40
 
 #define Piezo_PIN 14 //the piezo alarm
 
 #define PIR_SENSOR 37 //PIR sensor pin - senses motion
 
 //Motor Pins F = Forward B = Backward; uses L9110H H-Bridge which has two motor directions, allowing it to go backwards and give enough current to motors
-#define LEFTMOTORF 3 //L9110H H-Bridge also able to be controlled by PWM, so using AnalogWrite to give it varying speed levels
-#define LEFTMOTORB 4
+#define LEFTMOTORF 38 //L9110H H-Bridge also able to be controlled by PWM, so using AnalogWrite to give it varying speed levels
+#define LEFTMOTORB 39
 #define RIGHTMOTORF 20
 #define RIGHTMOTORB 21
 bool reversing = false; //boolean variable to know when motors need to reverse
@@ -67,22 +67,26 @@ void setup(){
   display.clearDisplay(); //clear anything old
   display.display(); //show display from logic below
 
-  pinMode(BTN_SET, INPUT_PULLUP); //pullup so when button pressed will send signal out
+  pinMode(BTN_SET, INPUT_PULLUP); //pullup so when button pressed will make signal go low
   pinMode(BTN_INC, INPUT_PULLUP); //button increment
   pinMode(BTN_NEXT, INPUT_PULLUP); //button next
-  pinMode(BTN_STP1, INPUT_PULLUP); //button stop
-  pinMode(BTN_STP2, INPUT_PULLUP);
-  pinMode(BTN_STP3, INPUT_PULLUP);
+  pinMode(BTN_STP1, INPUT_PULLUP); //button stop 1
+  pinMode(BTN_STP2, INPUT_PULLUP); //button stop 2
+  pinMode(BTN_STP3, INPUT_PULLUP); //button stop 3
 
-  //pinMode(Piezo_PIN, OUTPUT); //OUTPUT provides higher current, so use a 470/1k ohm resistor usually (from arduino)
-  //digitalWrite(Piezo_PIN, LOW); //piezo alarm off
+  pinMode(LED_PIN1, OUTPUT);
+  digitalWrite(LED_PIN1, LOW);
+  pinMode(LED_PIN2, OUTPUT);
+  digitalWrite(LED_PIN2, LOW);
+  pinMode(Piezo_PIN, OUTPUT); //OUTPUT provides higher current, so use a 470/1k ohm resistor usually (from arduino)
+  digitalWrite(Piezo_PIN, LOW); //piezo alarm off
 
   pinMode(LEFTMOTORF, OUTPUT); //motors
   pinMode(LEFTMOTORB, OUTPUT);
   pinMode(RIGHTMOTORF, OUTPUT);
   pinMode(RIGHTMOTORB, OUTPUT);
 
-  pinMode(PIR_SENSOR, INPUT); //PIR Sensor
+  pinMode(PIR_SENSOR, INPUT_PULLUP); //PIR Sensor
   pinMode(trigPin, OUTPUT); //US Sensor
   pinMode(echoPin, INPUT); //US Sensor
   }
@@ -100,12 +104,14 @@ void loop(){
   }
 
   if(alarmActive){
-    LEDPulse(LED_PIN); //call LEDPulse to turn on LED
-    //digitalWrite(Piezo_PIN, HIGH); //turn on Piezo alarm with pin 14 (really loud)
+    digitalWrite(LED_PIN1, HIGH);
+    digitalWrite(LED_PIN2, HIGH);
+    digitalWrite(Piezo_PIN, HIGH); //turn on Piezo alarm with pin 14 (really loud)
     MotorsOn();
   }else{
-    analogWrite(LED_PIN, 0); //turn off LED (0% PWM)
-    //digitalWrite(Piezo_PIN, LOW); //Piezo off if alarmActive is false
+    digitalWrite(LED_PIN1, LOW);
+    digitalWrite(LED_PIN2, LOW);
+    digitalWrite(Piezo_PIN, LOW); //Piezo off if alarmActive is false
     MotorsOff();
   }
 
@@ -140,36 +146,36 @@ void checkButtons(){
   bool currSTP3 = digitalRead(BTN_STP3);
 
   // STOP Button Sequence (3 Buttons Total)
-  if (alarmActive) { //buttons only will work when alarm is active
-    if (prevSTP1 == HIGH && currSTP1 == LOW) { //first button
+  if(alarmActive){ //buttons only will work when alarm is active
+    if(prevSTP1 == HIGH && currSTP1 == LOW){ //first button
       sequenceCount = 1; //1 correct
       buttonTime = millis(); //update time
       showTempMessage("One Correct!"); //show message
     }
-    if (sequenceCount == 1) { //if 1st button correct
-      if (prevSTP2 == HIGH && currSTP2 == LOW && millis() - buttonTime <= 1000) { //user has 1 second to press next correct button
+    if(sequenceCount == 1){ //if 1st button correct
+      if(prevSTP2 == HIGH && currSTP2 == LOW && millis() - buttonTime <= 1000){ //user has 1 second to press next correct button
         sequenceCount = 2; //2 correct
         buttonTime = millis(); //update time again
         showTempMessage("Two Correct!");
-      } else if (millis() - buttonTime > 1000) { //if they took over a second reset the count back to 0 so they can try again
+      }else if (millis() - buttonTime > 1000){ //if they took over a second reset the count back to 0 so they can try again
         sequenceCount = 0;
         showTempMessage("Too Slow!");
       }
     }
-    if (sequenceCount == 2) {//if 2 buttons hit correctly
-      if (prevSTP3 == HIGH && currSTP3 == LOW && millis() - buttonTime <= 1000) { //less time to get right (last one so they really cant mess up)
+    if(sequenceCount == 2){//if 2 buttons hit correctly
+      if(prevSTP3 == HIGH && currSTP3 == LOW && millis() - buttonTime <= 1000){ //less time to get right (last one so they really cant mess up)
         showTempMessage("All Correct!");
         alarmActive = false; //turn off alarm
-        if (snooze == 0 || snooze == 1) { //snooze logic, will have two snoozes, hence if it equals 0 or 1 it will do this logic
+        if(snooze == 0 || snooze == 1){ //snooze logic, will have two snoozes, hence if it equals 0 or 1 it will do this logic
           SnoozeAlarm(); //call this to set alarm in 1 minute
           snooze++;
           sequenceCount = 0; //reset here if they fully succeed or else will leave at 2
-        } else {
+        }else{
           alarmSet = false; //finally turn off alarm fully after two snoozes
           snooze = 0; //reset snooze to 0 for next alarm set by user
           sequenceCount = 0; //reset sequence here since for next alarm as well
         }
-      } else if (millis() - buttonTime > 1000) { //back to the start if they mess up last one still
+      }else if(millis() - buttonTime > 1000){ //back to the start if they mess up last one still
         sequenceCount = 0;
         showTempMessage("Almost!");
       }
@@ -230,17 +236,19 @@ void displayTime(){
   display.setTextColor(BLACK); //i think it can be white as well using WHITE but it goes invisible so no
   display.setCursor(0, 0); //set cursor setting x,y for display, nokia5110 lcd is 84x48 pixels
 
-  if(currentMode == SET_TIME){ //if it is in set time mode the top will say set time:, same with the next parts these are all at top of display
-    display.println("Set Time:");
-  }else if(currentMode == SET_ALARM){ //if alarm mode will say set alarm at top
-    display.println("Set Alarm:");
-  }else if(alarmActive){
+  if(alarmActive){
     display.println("ALARM ON"); //when alarm goes off you can say something stupid at the top
+  }else if(currentMode == SET_TIME){ //if it is in set time mode the top will say set time:, same with the next parts these are all at top of display
+    display.println("Set Time:");
+  }else if(currentMode == SET_ALARM){//if alarm mode will say set alarm at top
+    display.println("Set Alarm:");
   }else{
     display.println("Current Time:"); //if not in other modes, this will be at the top
   }
 
-  display.setTextSize(1); //text size makes the text bigger or smaller. 2 makes text too big so 1 
+  display.setTextSize(1); //text size makes the text bigger or smaller. 2 makes text too big so 1
+
+  if(!alarmActive){ 
   display.setCursor(0, 20); //set cursor again
 
   if(currentMode == SET_ALARM){ //how to see your alarm time and in this mode it shows that default alarm time that you can change
@@ -258,8 +266,9 @@ void displayTime(){
       }
   display.drawLine(x, 28, x + 12, 28, BLACK); // underline, (xstart,ystart,xend,yend,color), all values trial and error 
   }
+  }
 
-  if (showMessage && millis() - messageTime <= 1000) { //message shows for once second, which lines up with the button press times
+  if(showMessage && millis() - messageTime <= 1000){ //message shows for once second, which lines up with the button press times
     display.setCursor(0, 40); //show alarm button messages at the bottom of screen
     display.println(Message); //print message to display
   } else {
@@ -286,17 +295,6 @@ void SnoozeAlarm(){ //make user hate this clock, snoozealarm sets alarm in 1 min
   alarmSet = true;
 }
 
-void LEDPulse(int led_pin){ //uses PWM to control LED brightness. 0 = 0%, 255 = 100%
-  if(millis() - LEDlastUpdate >= 1){ //update time every 1ms can change
-    LEDlastUpdate = millis();
-    brightness -= 15; //increment brightness down by a multiple 15 (divisible by 15 = 17)
-    if(brightness <=0){ //if hits no brightness, then go all the way back up to fade down again
-      brightness = 255;
-    }
-    analogWrite(LED_PIN, brightness); //pin max of 40mA, reccomend 20mA, using 10k resistor to draw a lot of current
-  }
-}
-
 long SeeDistance(){ //Code from harshkzz on GitHub https://www.youtube.com/watch?v=sXNcZdf4NS0&ab_channel=INOVATRIX, standard US Sensor setup in cm
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2); //since microseconds, will slightly delay 1000ms when on, but i dont care that it will be off some microseconds
@@ -309,11 +307,11 @@ long SeeDistance(){ //Code from harshkzz on GitHub https://www.youtube.com/watch
 } //this will be used in MotorsOn so it will be able to detect objects in front and not run into them
 
 void MotorsOn(){
-  if(reversing && millis() - reverseTime < 700){
+  if(reversing && millis() - reverseTime < 3500){ //let it reverse for set amount of time - can change this to whatever
     analogWrite(LEFTMOTORF, 0);
-    analogWrite(LEFTMOTORB, 100); //39.2% pwm reverse
+    analogWrite(LEFTMOTORB, 150); //faster on one side to make it turn
     analogWrite(RIGHTMOTORF, 0);
-    analogWrite(RIGHTMOTORB, 40); //15.6% pwm reverse, slower so it turns left
+    analogWrite(RIGHTMOTORB, 75); //slower on this side
     return;//dont read rest of logic
   }else{
     reversing = false; //stop reversing when over time
@@ -323,13 +321,13 @@ void MotorsOn(){
     reverseTime = millis(); //start reverse time
     reversing = true;
     return; //stop logic to start reverse logic at top
-  }
+  }    
 
-  if(digitalRead(PIR_SENSOR) == HIGH){ //if PIR sensor detects motion, up the motorspeed to go away faster
-    motorspeed = 195; //76.5% pwm
-  }
+  if(digitalRead(PIR_SENSOR) == LOW){ //if PIR sensor detects motion, up the motorspeed to go away faster
+    motorspeed = 170; //faster motor speed
+  }else{motorspeed = 100;} //make sure it goes back down to 100 after sensor back to low
 
-  analogWrite(LEFTMOTORF, motorspeed);
+  analogWrite(LEFTMOTORF, motorspeed); //in general both go forward same speed
   analogWrite(LEFTMOTORB, 0);
   analogWrite(RIGHTMOTORF, motorspeed);
   analogWrite(RIGHTMOTORB, 0);
