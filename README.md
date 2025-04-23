@@ -1,7 +1,7 @@
-- This alarm clock project uses a Nokia 5110 LCD screen, and includes Adafruit libraries to connect and write to the screen. Buttons are used to set the current time and alarm manually.
-- More buttons are used to turn the alarm off in a set sequence.
+- This alarm clock project uses a Nokia 5110 LCD screen, and includes Adafruit libraries to connect and write to the screen. Three buttons are used to set the current time and alarm manually.
+- Three more buttons are used to turn the alarm off in a set sequence.
 - LED pin and Piezo Alarm pin turns on when the alarm boolean variable is true.
-- Motors turn on when alarm boolean is true, and uses an hbridge to give enough current to power them.
+- Motors turn on when alarm boolean is true, and the circuit uses an Hbridge to give enough current to power them.
 - PIR Motion sensor detects any motion to speed up the motors by giving a higher PWM signal.
 - UltraSonic sensor detects objects by sending out high frequency noise that echoes back from an object in front of it.
 - Sound calculations determine how far the object in front is, and if the distance is too low the motors will back up, with one side spinning faster to allow the alarm clock to turn.
